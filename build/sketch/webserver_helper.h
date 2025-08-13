@@ -2,9 +2,10 @@
 #ifndef WEBSERVER_HELPER_H
 #define WEBSERVER_HELPER_H
 
-#include <ESPAsyncWebServer.h>
+#include "config.h"              // ⬅️ Add this first to get MAX_LIGHTS etc
+#include "storage_helper.h"     // ⬅️ This gives us lightNames[] and NUM_LIGHTS
 #include "wifi_helper.h"
-#include "storage_helper.h"
+#include <ESPAsyncWebServer.h>
 
 String cachedSSIDOptions = "";
 
@@ -38,7 +39,7 @@ void setupWebRoutes(AsyncWebServer &server) {
     <style>
       body {
         font-family: 'Segoe UI', sans-serif;
-        background-color: #c9dcf1;
+        background-color: #74b7ffff;
         margin: 0;
         padding: 24px;
         font-size: 16px;
@@ -63,12 +64,12 @@ void setupWebRoutes(AsyncWebServer &server) {
       }
 
       form {
-        background-color: #e0f0ff;
+        background-color: #589ee9ff;
         padding: 24px;
         border-radius: 16px;
         text-align: left;
         width: 100%;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
         box-sizing: border-box;
       }
 
@@ -76,12 +77,12 @@ void setupWebRoutes(AsyncWebServer &server) {
         font-size: 16px;
         padding: 8px 12px;
         width: 100%;
-        margin: 10px 0;
+        margin: 12px 0;
         box-sizing: border-box;
       }
 
       button, input[type=submit] {
-        background-color: #598cc2;
+        background-color: #4f7fb3ff;
         color: white;
         border: none;
         padding: 12px 20px;
@@ -205,6 +206,7 @@ void setupWebRoutes(AsyncWebServer &server) {
   )rawliteral";
   html += R"rawliteral(
     <a href="/test" style="position: fixed; bottom: 12px; right: 12px; background-color: #4a90e2; color: white; padding: 10px 16px; border-radius: 8px; text-decoration: none; font-size: 14px;">Test</a>
+    <a href="/config" style="position: fixed; bottom: 12px; left: 12px; background-color: #4a90e2; color: white; padding: 10px 16px; border-radius: 8px; text-decoration: none; font-size: 14px;">Config</a>
   </body>
   </html>
   )rawliteral";
@@ -248,6 +250,193 @@ void setupWebRoutes(AsyncWebServer &server) {
       request->send(500, "text/html", "<h2>Failed to connect. Try again.</h2>");
     }
   });
+  // /config - Light and device configuration page
+  server.on("/config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String html = R"rawliteral(
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Device Config</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #74b7ff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+          }
+          .container {
+            width: 100%;
+            max-width: 480px;
+            background: #589ee9ff;
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            box-sizing: border-box;
+          }
+          h2 {
+            text-align: center;
+            margin-top: 0;
+          }
+          form {
+            max-width: 100%;
+          }
+          form label {
+            display: block;
+            margin-top: 12px;
+            font-weight: 600;
+          }
+          form input,
+          form select {
+            width: 100%;
+            padding: 8px;
+            margin-top: 4px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+          }
+          .light-input {
+          margin-top: 12px;
+          }
+          button {
+            margin-top: 20px;
+            width: 100%;
+            padding: 12px;
+            background: #4f7fb3;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+          }
+        </style>
+      </head>
+      <script>
+        function updateLightInputs() {
+          const count = parseInt(document.querySelector("select[name='numLights']").value);
+          for (let i = 0; i < 4; i++) {
+            const group = document.getElementById("lightGroup" + i);
+            if (i < count) {
+              group.style.display = "block";
+            } else {
+              group.style.display = "none";
+            }
+          }
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+          document.querySelector("select[name='numLights']").addEventListener("change", updateLightInputs);
+          updateLightInputs();  // run once at load
+        });
+      </script>
+      <body>
+        <div class="container">
+          <h2>Device Configuration</h2>
+        <form action="/saveConfig" method="get">
+          <label>Device Name</label>
+          <input name="device" value=")rawliteral";
+      html += device_name;
+      html += R"rawliteral("> 
+          <label>Number of Lights</label>
+          <select name="numLights">
+    )rawliteral";
+
+    for (int i = 1; i <= MAX_LIGHTS; ++i) {
+      html += "<option value='" + String(i) + "'";
+      if (i == NUM_LIGHTS) html += " selected";
+      html += ">" + String(i) + "</option>";
+    }
+
+    html += R"rawliteral(
+          </select>
+    )rawliteral";
+
+    for (int i = 0; i < MAX_LIGHTS; ++i) {
+      html += "<div class='light-input' id='lightGroup" + String(i) + "'>";
+      html += "<label>Light " + String(i + 1) + " Name</label>";
+      html += "<input name='light" + String(i) + "' value='" + lightNames[i] + "'>";
+      html += "</div>";
+    }
+
+
+    html += R"rawliteral(
+          <button type="submit">Save</button>
+        </form>
+        </div>
+      </body>
+      </html>
+    )rawliteral";
+
+    request->send(200, "text/html", html);
+  });
+
+  // /saveConfig - Save configuration
+  server.on("/saveConfig", HTTP_GET, [](AsyncWebServerRequest *request) {
+    preferences.begin("config", false);
+
+    if (request->hasParam("device")) {
+      String newDevice = request->getParam("device")->value();
+      preferences.putString("device", newDevice);
+    }
+
+    if (request->hasParam("numLights")) {
+      int n = request->getParam("numLights")->value().toInt();
+      if (n >= 1 && n <= MAX_LIGHTS) {
+        preferences.putInt("numLights", n);
+      }
+    }
+
+    for (int i = 0; i < MAX_LIGHTS; ++i) {
+      String param = "light" + String(i);
+      if (request->hasParam(param)) {
+        String name = request->getParam(param)->value();
+        preferences.putString(param.c_str(), name);
+      }
+    }
+
+    preferences.end();
+
+    // Send a page that triggers restart
+    String html = R"rawliteral(
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="refresh" content="5">
+        <title>Restarting</title>
+        <style>
+          body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #c9dcf1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+          }
+          h2 {
+            color: #333;
+          }
+        </style>
+      </head>
+      <body>
+        <h2>Configuration Saved!</h2>
+        <p>Restarting in 3 seconds...</p>
+      </body>
+      </html>
+    )rawliteral";
+
+    request->send(200, "text/html", html);
+
+    // Restart the device after 3 seconds
+    request->redirect("/");
+    delay(3000);
+    ESP.restart();
+  });
+
 }
 
 #endif

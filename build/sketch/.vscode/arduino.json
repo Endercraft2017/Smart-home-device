@@ -13,5 +13,6 @@
     "stopBits": "one"
   },
   "configurationRequired": true,
-  "programmer": "Esptool"
+  "programmer": "esptool",
+  "optimize_for_debug": false
 }

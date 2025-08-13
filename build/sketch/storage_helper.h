@@ -3,6 +3,7 @@
 #define STORAGE_HELPER_H
 
 #include <Preferences.h>
+extern String lightNames[MAX_LIGHTS];
 
 Preferences preferences;
 

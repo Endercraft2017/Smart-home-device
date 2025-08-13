@@ -9,48 +9,62 @@
 #include "python_api_helper.h"
 #include "config.h"
 
-unsigned long lastWiFiCheck = 0;
-const unsigned long wifiCheckInterval = 10000;  // 10 seconds
+String deviceNameStr = "esp-light";  // Keep this alive
+const char* device_name = nullptr;   // Global pointer to c_str
+int NUM_LIGHTS = MAX_LIGHTS;         // Default, can be overwritten by Preferences
 
+AsyncWebServer server(80);
 
-const char* device_name = "light_1";  // global used by python_api_helper
-AsyncWebServer server(80); // Create AsyncWebServer object on port 80
-
-#line 17 "I:\\VS_Code_Programs\\AI_Assistant_Agent\\ESP32\\main\\main.ino"
+#line 16 "I:\\VS_Code_Programs\\AI_Assistant_Agent\\ESP32\\main\\main.ino"
 void setup();
-#line 53 "I:\\VS_Code_Programs\\AI_Assistant_Agent\\ESP32\\main\\main.ino"
+#line 67 "I:\\VS_Code_Programs\\AI_Assistant_Agent\\ESP32\\main\\main.ino"
 void loop();
-#line 17 "I:\\VS_Code_Programs\\AI_Assistant_Agent\\ESP32\\main\\main.ino"
+#line 16 "I:\\VS_Code_Programs\\AI_Assistant_Agent\\ESP32\\main\\main.ino"
 void setup() {
   Serial.begin(115200);
-  pinMode(LED, OUTPUT);
-  toggleLight(loadLightState());  // restore LED state
 
-  delay(1000); // Add in setup() before WiFi startup
+  // ===== Load Config =====
+  preferences.begin("config", true);
+  deviceNameStr = preferences.getString("device", "esp-light");
+  device_name = deviceNameStr.c_str();
 
+  NUM_LIGHTS = preferences.getInt("numLights", MAX_LIGHTS);
+  for (int i = 0; i < NUM_LIGHTS; ++i) {
+    String key = "light" + String(i);
+    String defaultName = "Light " + String(i + 1);
+    lightNames[i] = preferences.getString(key.c_str(), defaultName);
+  }
+  preferences.end();
+
+  // ===== Setup pins and states =====
+  for (int i = 0; i < NUM_LIGHTS; ++i) {
+    pinMode(lightPins[i], OUTPUT);
+    toggleLight(i, loadLightState(i), false);  // Don’t save during boot
+  }
+
+  delay(1000);  // Stabilize before WiFi
+
+  // ===== WiFi Setup =====
   String ssid, pass;
   if (loadCredentials(ssid, pass)) {
-  Serial.println("Found saved WiFi credentials.");
-  Serial.println("SSID: " + ssid);
-  connectToWiFi(ssid, pass);
+    Serial.println("Found saved WiFi credentials.");
+    Serial.println("SSID: " + ssid);
+    connectToWiFi(ssid, pass);
 
-  unsigned long startAttemptTime = millis();
-  const unsigned long timeout = 5000;
+    unsigned long startAttempt = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 5000) {
+      delay(100);
+      yield();
+    }
 
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < timeout) {
-    delay(100);
-    yield();
-  }
-
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Failed to connect. Starting AP mode...");
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("Failed to connect. Starting AP mode...");
+      setupAP();
+    }
+  } else {
+    Serial.println("No saved WiFi credentials. Starting AP mode...");
     setupAP();
   }
-  } else {
-  Serial.println("No saved WiFi credentials. Starting AP mode...");
-  setupAP();
-  }
-
 
   setupWebRoutes(server);
   setupPythonRoutes(server);
@@ -58,9 +72,10 @@ void setup() {
 }
 
 void loop() {
-  unsigned long now = millis();
+  static unsigned long lastWiFiCheck = 0;
+  const unsigned long wifiCheckInterval = 10000;
 
-  // Check WiFi status periodically
+  unsigned long now = millis();
   if (now - lastWiFiCheck > wifiCheckInterval) {
     lastWiFiCheck = now;
     if (WiFi.getMode() == WIFI_STA && WiFi.status() != WL_CONNECTED) {
@@ -74,4 +89,3 @@ void loop() {
     }
   }
 }
-
